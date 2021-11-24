@@ -20,19 +20,30 @@ har {{member.balance|money}} kroner til gode!
 <center>
 <table cellpadding="8px">
    <tr>
+       <th>
+           <form method="post" action="/{{room.id}}/user/">
+               {% csrf_token %}
+               <input type="hidden" value="{{ member.username }}" name="username">
+               <a href="" onclick="this.closest('form').submit();return false;">Bruger Info</a>
+           </form>
+       </th>
+       <th>
+           <form method="post" action="/{{room.id}}/user/pay">
+               {% csrf_token %}
+               <input type="hidden" value="{{ member.username }}" name="username">
+               <a href="" onclick="this.closest('form').submit();return false;">Indsæt penge</a>
+           </form>
+       </th>
+{% comment %}
       <th>
          <a href="/{{room.id}}/user/{{member.id}}">Bruger Info</a>
       </th>
       <th>
         <a href="/{{room.id}}/user/{{member.id}}/pay">Indsæt penge</a>
       </th>
-{% comment %}
       <th>
          <a href="/{{room.id}}/user/{{member.id}}/undo">Fortryd køb</a>
       </th>
-{% endcomment %}
-
-{% comment %}
       <th>
          <a href="/index.php3?multiple=1&user_id=2024">Multi-køb</a>
       </th>
@@ -80,12 +91,11 @@ har {{member.balance|money}} kroner til gode!
 			  {% for product in product_list|partition:"2"|first %}
 			  <tr>
 			    <td>
-                    <form method="post" action="/{{ room.id }}/sale/{{ member.id }}/">
+                    <form method="post" action="/{{ room.id }}/user/sale/">
                         {% csrf_token %}
                         <a href="" onclick="this.closest('form').submit();return false;">{{product.name}}</a>
                         <input type="hidden" value="{{ product.id }}" name="product_id">
-                        <input type="hidden" value="{{ room.id }}" name="room_id">
-                        <input type="hidden" value="{{ member.id }}" name="member_id">
+                        <input type="hidden" value="{{ member.username }}" name="member">
                     </form>
                 </td>
 			    <td align="right">{{product.price|money}} kr</td>
@@ -104,12 +114,11 @@ har {{member.balance|money}} kroner til gode!
                   {% for product in product_list|partition:"2"|last %}
                   <tr>
                     <td>
-                        <form method="post" action="/{{ room.id }}/sale/{{ member.id }}/">
+                        <form method="post" action="/{{ room.id }}/user/sale/">
                             {% csrf_token %}
                             <a href="" onclick="this.closest('form').submit();return false;">{{product.name}}</a>
                             <input type="hidden" value="{{ product.id }}" name="product_id">
-                            <input type="hidden" value="{{ room.id }}" name="room_id">
-                            <input type="hidden" value="{{ member.id }}" name="member_id">
+                            <input type="hidden" value="{{ member.username }}" name="member">
                         </form>
                     </td>
                     <td align="right">{{product.price|money}} kr</td>

@@ -30,4 +30,9 @@ class QRPaymentForm(forms.Form):
 
 
 class PurchaseForm(forms.Form):
+    member = forms.CharField(max_length=16)
     product_id = forms.IntegerField()
+
+
+class UsernameForm(forms.Form):
+    username = forms.CharField(max_length=16)

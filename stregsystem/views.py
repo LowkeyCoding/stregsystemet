@@ -37,7 +37,7 @@ from stregsystem.utils import (
 )
 
 from .booze import ballmer_peak
-from .forms import MobilePayToolForm, QRPaymentForm, PurchaseForm
+from .forms import MobilePayToolForm, QRPaymentForm, PurchaseForm, UsernameForm
 
 
 def __get_news():
@@ -184,10 +184,11 @@ def usermenu(request, room, member, bought, from_sale=False):
         return render(request, 'stregsystem/menu.html', locals())
 
 
-def menu_userinfo(request, room_id, member_id):
+def menu_userinfo(request, room_id):
     room = Room.objects.get(pk=room_id)
     news = __get_news()
-    member = Member.objects.get(pk=member_id, active=True)
+    username = request.POST['username'].strip()
+    member = Member.objects.get(username=username, active=True)
 
     last_sale_list = member.sale_set.order_by('-timestamp')[:10]
     try:
@@ -201,10 +202,12 @@ def menu_userinfo(request, room_id, member_id):
     return render(request, 'stregsystem/menu_userinfo.html', locals())
 
 
-def menu_userpay(request, room_id, member_id):
+def menu_userpay(request, room_id):
     room = Room.objects.get(pk=room_id)
-    member = Member.objects.get(pk=member_id, active=True)
-
+    current_user = UsernameForm(request.POST)
+    member = None
+    if current_user.is_valid():
+        member = Member.objects.get(username=current_user.cleaned_data['username'], active=True)
     amounts = {100, 200}
 
     try:
@@ -222,14 +225,19 @@ def menu_userpay(request, room_id, member_id):
     return render(request, 'stregsystem/menu_userpay.html', locals())
 
 
-def menu_sale(request, room_id, member_id, product_id=None):
+def menu_sale(request, room_id, product_id=None):
     room = Room.objects.get(pk=room_id)
     news = __get_news()
-    member = Member.objects.get(pk=member_id, active=True)
-
     product = None
     if request.method == 'POST':
+
         purchase = PurchaseForm(request.POST)
+        current_user = UsernameForm(request.POST)
+
+        if current_user.is_valid():
+            # Refresh member, to get new amount
+            member = Member.objects.get(username=current_user.cleaned_data['username'], active=True)
+            return usermenu(request, room, member, product, from_sale=True)
         if not purchase.is_valid():
             return HttpResponseBadRequest(
                 "Cannot complete sale, get help at /dev/null or at mailto:[treo|fit]@fklub.dk"
@@ -242,10 +250,10 @@ def menu_sale(request, room_id, member_id, product_id=None):
                 Q(rooms__id=room_id) | Q(rooms=None),
                 Q(deactivate_date__gte=timezone.now()) | Q(deactivate_date__isnull=True),
             )
-
+            member = Member.objects.get(username=purchase.cleaned_data['member'], active=True)
             order = Order.from_products(member=member, room=room, products=(product,))
-
             order.execute()
+            return usermenu(request, room, member, product, from_sale=True)
 
         except Product.DoesNotExist:
             pass
@@ -254,11 +262,6 @@ def menu_sale(request, room_id, member_id, product_id=None):
         except NoMoreInventoryError:
             # @INCOMPLETE this should render with a different template
             return render(request, 'stregsystem/error_stregforbud.html', locals())
-
-    # Refresh member, to get new amount
-    member = Member.objects.get(pk=member_id, active=True)
-    return usermenu(request, room, member, product, from_sale=True)
-
 
 @staff_member_required()
 @permission_required("stregsystem.import_batch_payments")
