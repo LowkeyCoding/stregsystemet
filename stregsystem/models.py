@@ -4,6 +4,7 @@ from email.utils import parseaddr
 from django.contrib.admin.models import LogEntry, ADDITION, CHANGE
 from django.contrib.auth.models import User
 from django.contrib.contenttypes.models import ContentType
+from django.core.validators import RegexValidator
 from django.db import models, transaction
 from django.db.models import Count
 from django.utils import timezone
@@ -116,7 +117,9 @@ class Order(object):
 
         # Check if we have enough inventory to fulfill the order
         for item in self.items:
-            if item.product.start_date is not None and (item.product.bought + item.count > item.product.quantity):
+            if item.product.start_date is not None and (
+                item.product.bought + item.count > item.product.quantity
+            ):
                 raise NoMoreInventoryError()
 
         # Take update lock on member row
@@ -127,7 +130,12 @@ class Order(object):
             # @HACK Since we want to use the old database layout, we need to
             # add a sale for every item and every instance of that item
             for i in range(item.count):
-                s = Sale(member=self.member, product=item.product, room=self.room, price=item.product.price)
+                s = Sale(
+                    member=self.member,
+                    product=item.product,
+                    room=self.room,
+                    price=item.product.price,
+                )
                 s.save()
 
             # Bought (used above) is automatically calculated, so we don't need
@@ -152,19 +160,25 @@ def get_current_year():
 
 class Member(models.Model):  # id automatisk...
     GENDER_CHOICES = (
-        ('U', 'Unknown'),
-        ('M', 'Male'),
-        ('F', 'Female'),
+        ("U", "Unknown"),
+        ("M", "Male"),
+        ("F", "Female"),
     )
     active = models.BooleanField(default=True)
-    username = models.CharField(max_length=16)
-    year = models.CharField(max_length=4, default=get_current_year)  # Put the current year as default
+    username = models.CharField(
+        max_length=16, validators=[RegexValidator(r"[^(\/\\)]+")]
+    )
+    year = models.CharField(
+        max_length=4, default=get_current_year
+    )  # Put the current year as default
     firstname = models.CharField(max_length=20)  # for 'firstname'
     lastname = models.CharField(max_length=30)  # for 'lastname'
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES)
     email = models.EmailField(blank=True)
     want_spam = models.BooleanField(default=True)  # oensker vedkommende fember mails?
-    balance = models.IntegerField(default=0)  # hvor mange oerer vedkommende har til gode
+    balance = models.IntegerField(
+        default=0
+    )  # hvor mange oerer vedkommende har til gode
     undo_count = models.IntegerField(default=0)  # for 'undos' i alt
     notes = models.TextField(blank=True)
 
@@ -176,7 +190,7 @@ class Member(models.Model):  # id automatisk...
         return money(self.balance) + " kr."
 
     balance_display.short_description = "Balance"
-    balance_display.admin_order_field = 'balance'
+    balance_display.admin_order_field = "balance"
 
     @deprecated
     def __unicode__(self):
@@ -264,8 +278,10 @@ class Member(models.Model):  # id automatisk...
 
         alcohol_sales = self.sale_set.filter(
             timestamp__gt=calculation_start, product__alcohol_content_ml__gt=0.0
-        ).order_by('timestamp')
-        alcohol_timeline = [(s.timestamp, s.product.alcohol_content_ml) for s in alcohol_sales]
+        ).order_by("timestamp")
+        alcohol_timeline = [
+            (s.timestamp, s.product.alcohol_content_ml) for s in alcohol_sales
+        ]
 
         gender = Gender.UNKNOWN
         if self.gender == "M":
@@ -302,14 +318,16 @@ class Payment(models.Model):  # id automatisk...
 
     amount_display.short_description = "Amount"
     # XXX - django bug - kan ikke vaelge mellem desc og asc i admin, som ved normalt felt
-    amount_display.admin_order_field = '-amount'
+    amount_display.admin_order_field = "-amount"
 
     @deprecated
     def __unicode__(self):
         return self.__str__()
 
     def __str__(self):
-        return self.member.username + " " + str(self.timestamp) + ": " + money(self.amount)
+        return (
+            self.member.username + " " + str(self.timestamp) + ": " + money(self.amount)
+        )
 
     @transaction.atomic
     def save(self, mbpayment=None, *args, **kwargs):
@@ -321,8 +339,12 @@ class Payment(models.Model):  # id automatisk...
             super(Payment, self).save(*args, **kwargs)
             self.member.save()
             if self.member.email != "" and self.amount != 0:
-                if '@' in parseaddr(self.member.email)[1] and self.member.want_spam:
-                    send_payment_mail(self.member, self.amount, mbpayment.comment if mbpayment else None)
+                if "@" in parseaddr(self.member.email)[1] and self.member.want_spam:
+                    send_payment_mail(
+                        self.member,
+                        self.amount,
+                        mbpayment.comment if mbpayment else None,
+                    )
 
     def log_from_mobile_payment(self, processed_mobile_payment, admin_user: User):
         LogEntry.objects.log_action(
@@ -331,7 +353,8 @@ class Payment(models.Model):  # id automatisk...
             object_id=self.id,
             object_repr=str(self),
             action_flag=ADDITION,
-            change_message=f"{''}" f"MobilePayment (transaction_id: {processed_mobile_payment.transaction_id})",
+            change_message=f"{''}"
+            f"MobilePayment (transaction_id: {processed_mobile_payment.transaction_id})",
         )
 
     def delete(self, *args, **kwargs):
@@ -348,14 +371,14 @@ class MobilePayment(models.Model):
     class Meta:
         permissions = (("mobilepaytool_access", "MobilePaytool access"),)
 
-    UNSET = 'U'
-    APPROVED = 'A'
-    IGNORED = 'I'
+    UNSET = "U"
+    APPROVED = "A"
+    IGNORED = "I"
 
     STATUS_CHOICES = (
-        (UNSET, 'Unset'),
-        (APPROVED, 'Approved'),
-        (IGNORED, 'Ignored'),
+        (UNSET, "Unset"),
+        (APPROVED, "Approved"),
+        (IGNORED, "Ignored"),
     )
     member = models.ForeignKey(
         Member, on_delete=models.CASCADE, null=True, blank=True
@@ -394,7 +417,10 @@ class MobilePayment(models.Model):
         for processed_mobile_payment in make_processed_mobilepayment_query():
 
             if processed_mobile_payment.status == MobilePayment.APPROVED:
-                payment = Payment(member=processed_mobile_payment.member, amount=processed_mobile_payment.amount)
+                payment = Payment(
+                    member=processed_mobile_payment.member,
+                    amount=processed_mobile_payment.amount,
+                )
                 # Save payment and foreign key to MobilePayment field
                 payment.save()
                 payment.log_from_mobile_payment(processed_mobile_payment, admin_user)
@@ -417,15 +443,15 @@ class MobilePayment(models.Model):
 
         for row in submitted_data:
             # Skip rows which are set to "unset" (the default).
-            if row['status'] == MobilePayment.UNSET:
+            if row["status"] == MobilePayment.UNSET:
                 continue
             # Skip rows which are set to "approved" without member. A Payment MUST have a Member.
-            if row['status'] == MobilePayment.APPROVED and row['member'] is None:
+            if row["status"] == MobilePayment.APPROVED and row["member"] is None:
                 continue
             cleaned_data.append(row)
 
         # Find the id's of the remaining cleaned data.
-        mobile_payment_ids = [row['id'].id for row in cleaned_data]
+        mobile_payment_ids = [row["id"].id for row in cleaned_data]
         # Count how many id of the id's who are set to status "unset".
         database_mobile_payment_count = MobilePayment.objects.filter(
             id__in=mobile_payment_ids, status=MobilePayment.UNSET
@@ -435,16 +461,17 @@ class MobilePayment(models.Model):
             # get database mobilepayments matching cleaned ids and having been processed while form has been active
             raise MobilePaytoolException(
                 MobilePayment.objects.filter(
-                    id__in=mobile_payment_ids, status__in=(MobilePayment.APPROVED, MobilePayment.IGNORED)
+                    id__in=mobile_payment_ids,
+                    status__in=(MobilePayment.APPROVED, MobilePayment.IGNORED),
                 )
             )
 
         for row in cleaned_data:
-            processed_mobile_payment = MobilePayment.objects.get(id=row['id'].id)
+            processed_mobile_payment = MobilePayment.objects.get(id=row["id"].id)
             # If approved, we need to create a payment and relate said payment to the mobilepayment.
-            if row['status'] == MobilePayment.APPROVED:
+            if row["status"] == MobilePayment.APPROVED:
                 payment_amount = processed_mobile_payment.amount
-                member = Member.objects.get(id=row['member'].id)
+                member = Member.objects.get(id=row["member"].id)
 
                 payment = Payment(member=member, amount=payment_amount)
                 payment.log_from_mobile_payment(processed_mobile_payment, admin_user)
@@ -454,10 +481,10 @@ class MobilePayment(models.Model):
                 processed_mobile_payment.member = member
                 processed_mobile_payment.log_mobile_payment(admin_user, "Approved")
             # If ignored, we need to log who did it.
-            elif row['status'] == MobilePayment.IGNORED:
+            elif row["status"] == MobilePayment.IGNORED:
                 processed_mobile_payment.log_mobile_payment(admin_user, "Ignored")
 
-            processed_mobile_payment.status = row['status']
+            processed_mobile_payment.status = row["status"]
             processed_mobile_payment.save()
 
         # Return how many records were modified.
@@ -492,7 +519,7 @@ class Category(models.Model):
         return self.name
 
     class Meta:
-        verbose_name_plural = 'Categories'
+        verbose_name_plural = "Categories"
 
 
 # XXX
@@ -524,13 +551,15 @@ class Product(models.Model):  # id automatisk...
         return self.__str__()
 
     def __str__(self):
-        return active_str(self.active) + " " + self.name + " (" + money(self.price) + ")"
+        return (
+            active_str(self.active) + " " + self.name + " (" + money(self.price) + ")"
+        )
 
     def save(self, *args, **kwargs):
         price_changed = True
         if self.id:
             try:
-                oldprice = self.old_prices.order_by('-changed_on')[0:1].get()
+                oldprice = self.old_prices.order_by("-changed_on")[0:1].get()
                 price_changed = oldprice != self.price
             except OldPrice.DoesNotExist:  # der findes varer hvor der ikke er nogen "tidligere priser"
                 pass
@@ -544,12 +573,14 @@ class Product(models.Model):  # id automatisk...
         # bought count - Jesper 27/09-2017
         if self.start_date is None:
             return 0
-        return self.sale_set.filter(timestamp__gt=date_to_midnight(self.start_date)).aggregate(bought=Count("id"))[
-            "bought"
-        ]
+        return self.sale_set.filter(
+            timestamp__gt=date_to_midnight(self.start_date)
+        ).aggregate(bought=Count("id"))["bought"]
 
     def is_active(self):
-        expired = self.deactivate_date is not None and self.deactivate_date <= timezone.now()
+        expired = (
+            self.deactivate_date is not None and self.deactivate_date <= timezone.now()
+        )
 
         if self.start_date is not None:
             out_of_stock = self.quantity <= self.bought
@@ -561,7 +592,9 @@ class Product(models.Model):  # id automatisk...
 
 
 class OldPrice(models.Model):  # gamle priser, skal huskes; til regnskab/statistik?
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='old_prices')
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="old_prices"
+    )
     price = models.IntegerField()  # penge, oere...
     changed_on = models.DateTimeField(auto_now_add=True)
 
@@ -570,7 +603,14 @@ class OldPrice(models.Model):  # gamle priser, skal huskes; til regnskab/statist
         return self.__str__()
 
     def __str__(self):
-        return self.product.name + ": " + money(self.price) + " (" + str(self.changed_on) + ")"
+        return (
+            self.product.name
+            + ": "
+            + money(self.price)
+            + " ("
+            + str(self.changed_on)
+            + ")"
+        )
 
 
 class Sale(models.Model):
@@ -592,14 +632,22 @@ class Sale(models.Model):
 
     price_display.short_description = "Price"
     # XXX - django bug - kan ikke vaelge mellem desc og asc i admin, som ved normalt felt
-    price_display.admin_order_field = 'price'
+    price_display.admin_order_field = "price"
 
     @deprecated
     def __unicode__(self):
         return self.__str__()
 
     def __str__(self):
-        return self.member.username + " " + self.product.name + " (" + money(self.price) + ") " + str(self.timestamp)
+        return (
+            self.member.username
+            + " "
+            + self.product.name
+            + " ("
+            + money(self.price)
+            + ") "
+            + str(self.timestamp)
+        )
 
     def save(self, *args, **kwargs):
         if self.id:
