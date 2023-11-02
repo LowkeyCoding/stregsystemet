@@ -46,6 +46,7 @@ PASSWORD =
 [hostnames]
 2=127.0.0.1
 3=localhost
+4=stregsystem.walsted.dev
 
 [logging]
 HANDLERS = [
